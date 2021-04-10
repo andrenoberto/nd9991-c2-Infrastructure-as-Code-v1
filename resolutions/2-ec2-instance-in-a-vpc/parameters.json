@@ -1,0 +1,14 @@
+[
+  {
+    "ParameterKey": "DefaultVpcId",
+    "ParameterValue": "vpc-30290b48"
+  },
+  {
+    "ParameterKey": "DefaultSubnetId",
+    "ParameterValue": "subnet-dc518896"
+  },
+  {
+    "ParameterKey": "DefaultAmiId",
+    "ParameterValue": "ami-0518bb0e75d3619ca"
+  }
+]

@@ -1,0 +1,73 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Udacity Labs - Creates a JumpBox using a default VPC. Also creates a new EC2 instance and an IAM Role.
+Parameters:
+  DefaultVpcId:
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-30290b48
+  DefaultSubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-dc518896
+  DefaultAmiId:
+    Type: String
+    Default: ami-0518bb0e75d3619ca
+Resources:
+  AWSEC2AdminRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Creates a role that gives EC2 full access to AWS resources
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+  AWSEC2OwnerOnlySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allows group owner to access AWS CLI and manipulate the resources
+      GroupName: Owner Only
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          CidrIp: 89.101.167.249/32
+          FromPort: 22
+          ToPort: 22
+        - IpProtocol: tcp
+          CidrIp: 0.0.0.0/0
+          FromPort: 80
+          ToPort: 80
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+      VpcId:
+        Ref: DefaultVpcId
+  AWSEC2Instace:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId:
+        Ref: DefaultAmiId
+      InstanceType: t3.micro
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeleteOnTermination: true
+          DeviceIndex: 0
+          GroupSet:
+            - !GetAtt AWSEC2OwnerOnlySecurityGroup.GroupId
+          SubnetId:
+            Ref: DefaultSubnetId
+      UserData:
+       Fn::Base64: !Sub |
+         #!/bin/bash
+         sudo yum update -y
+         sudo yum install -y httpd
+         sudo systemctl start httpd
+         sudo systemctl enable httpd
+      Tags:
+        - Key: Name
+          Value: jumpBox
