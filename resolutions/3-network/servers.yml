@@ -1,0 +1,161 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A sample on how to setup a server infrastructure on AWS using CloudFormation
+Parameters:
+  ProjectName:
+    Description: The project name
+    Type: String
+  Environment:
+    Description: The environment name
+    Type: String
+  ParentStackName:
+    Description: The name of the parent stack we depend on
+    Type: String
+  AllCidr:
+    Description: Allow all ranges of IP addresses
+    Type: String
+Resources:
+  ServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security rules designed for web servers
+      GroupName: WebSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: !Ref AllCidr
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: !Ref AllCidr
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllCidr 
+      VpcId:
+        Fn::ImportValue:
+          !Sub ${ParentStackName}Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName} - Server
+        - Key: Environment
+          Value: !Ref Environment
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security rules designed for load balancers
+      GroupName: LoadBalancerSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: !Ref AllCidr
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref AllCidr
+      VpcId:
+        Fn::ImportValue:
+          !Sub ${ParentStackName}Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName} - Load Balancer
+        - Key: Environment
+          Value: !Ref Environment
+  WebAppLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      BlockDeviceMappings:
+        - DeviceName: /dev/sdk
+          Ebs:
+            VolumeSize: 10
+      ImageId: ami-090717c950a5c34d3
+      InstanceType: t3.medium
+      KeyName: udacity-lessons
+      SecurityGroups:
+        - Ref: ServerSecurityGroup
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          # Install docker
+          sudo apt-get update
+          sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+          add-apt-repository \
+          "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
+          $(lsb_release -cs) \
+          stable"
+          apt-get update
+          apt-get install -y docker-ce
+          usermod -aG docker ubuntu
+          docker run -p 8080:8080 tomcat:8.0
+  WebAppGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: Web App Group
+      VPCZoneIdentifier:
+        - Fn::ImportValue:
+            !Sub ${ParentStackName}PrivateSubnets
+      MinSize: 2
+      MaxSize: 4
+      LaunchConfigurationName: !Ref WebAppLaunchConfiguration
+      TargetGroupARNs:
+        - !Ref WebAppTargetGroup
+      HealthCheckGracePeriod: 60
+      HealthCheckType: ELB
+  WebLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: WebLoadBalancer
+      SecurityGroups:
+        - Ref: LoadBalancerSecurityGroup
+      Subnets:
+        - Fn::ImportValue: !Sub ${ParentStackName}PublicSubnet1
+        - Fn::ImportValue: !Sub ${ParentStackName}PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName} - Load Balancer
+        - Key: Environment
+          Value: !Ref Environment
+  WebLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref WebAppTargetGroup
+      LoadBalancerArn: !Ref WebLoadBalancer
+      Port: 80
+      Protocol: HTTP
+  WebLoadBalancerListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref WebAppTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values: [/]
+      ListenerArn: !Ref WebLoadBalancerListener
+      Priority: 1
+  WebAppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckPort: 80
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 5
+      Name: WebAppTargetGroup
+      Port: 8080
+      Protocol: HTTP
+      VpcId:
+        Fn::ImportValue: !Sub ${ParentStackName}Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName} - Web App Target Group
+        - Key: Environment
+          Value: !Ref Environment

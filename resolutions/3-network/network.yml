@@ -235,3 +235,13 @@ Outputs:
           - !Ref PrivateRouteTable2
     Export:
       Name: !Sub ${AWS::StackName}PrivateRouteTables
+  PublicSubnet1:
+    Description: The public subnet 1 ID
+    Value: !Ref PublicSubnet1
+    Export:
+      Name: !Sub ${AWS::StackName}PublicSubnet1
+  PublicSubnet2:
+    Description: The public subnet 2 ID
+    Value: !Ref PublicSubnet2
+    Export:
+      Name: !Sub ${AWS::StackName}PublicSubnet2

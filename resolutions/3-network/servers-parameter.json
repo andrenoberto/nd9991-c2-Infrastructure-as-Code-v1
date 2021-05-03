@@ -1,0 +1,18 @@
+[
+  {
+    "ParameterKey": "AllCidr",
+    "ParameterValue": "0.0.0.0/0"
+  },
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "Udacity"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "DEV"
+  },
+  {
+    "ParameterKey": "ParentStackName",
+    "ParameterValue": "udacity"
+  }
+]
