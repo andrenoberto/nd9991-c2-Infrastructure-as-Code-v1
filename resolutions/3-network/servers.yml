@@ -159,3 +159,37 @@ Resources:
           Value: !Sub ${ProjectName} - Web App Target Group
         - Key: Environment
           Value: !Ref Environment
+  MySQLDatabaseSubnet:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub The default subnet for databases inside ${ProjectName}
+      DBSubnetGroupName: !Sub ${ProjectName}DatabaseGroup
+      SubnetIds:
+        - Fn::ImportValue: !Sub ${ParentStackName}PrivateSubnet1
+        - Fn::ImportValue: !Sub ${ParentStackName}PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName} - Database Group
+        - Key: Environment
+          Value: !Ref Environment
+  MySQLDatabase:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    Properties:
+      AllocatedStorage: 20
+      StorageType: gp2
+      DBInstanceClass: db.t3.micro
+      DBName: !Sub ${ProjectName}
+      VPCSecurityGroups:
+        - Ref: ServerSecurityGroup
+      DBSubnetGroupName: !Ref MySQLDatabaseSubnet
+      DeletionProtection: false
+      Engine: mysql
+      EngineVersion: 8.0.23
+      MasterUsername: root
+      MasterUserPassword: rootRoot
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName} - Database
+        - Key: Environment
+          Value: !Ref Environment
