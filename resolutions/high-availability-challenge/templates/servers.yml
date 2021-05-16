@@ -1,0 +1,280 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Basic server infrastructure for Udagram
+Parameters:
+  ProjectName:
+    Description: The project name
+    Type: String
+  Environment:
+    Description: The environment name
+    Type: String
+  ParentStackName:
+    Description: The name of the parent stack this stack depends on
+    Type: String
+  AllCidr:
+    Description: A CIDR block that includes all existing IPv4 addresses
+    Type: String
+  TargetS3BucketName:
+    Description: The S3 bucket name where we're fetching the latest build from. Please, note that account ID will be added to the final name
+    Type: String
+  SSHAccessIP:
+    Description: The IP address that will be whitelisted to SSH into public instances
+    Type: String
+  UbuntuAMI:
+    Description: The ID of the Ubuntu image that will be use to provision the servers
+    Type: String
+  KeyPairName:
+    Description: The name of the key pair that will be used to gain access to the provisioned virtual machines
+    Type: String
+Resources:
+  S3UdagramReadRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: aws-ec2-udagram-s3-read-only
+      Description: Allows EC2 instances to get objects from Udagram S3 bucket
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName} - S3 Read Only
+  UdagramS3ReadPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: UdagramS3ReadPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: s3:GetObject
+            Resource: !Sub arn:aws:s3:::${TargetS3BucketName}-${AWS::AccountId}/*
+      Roles:
+        - !Ref S3UdagramReadRole
+  GeneralServerIAMProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: GeneralServerProfile
+      Path: /
+      Roles:
+        - !Ref S3UdagramReadRole
+  ApacheServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security rules designed for the Apache servers
+      GroupName: ApacheSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: !Ref AllCidr
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp:
+            Fn::ImportValue:
+              !Sub ${ParentStackName}VpcCidr
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp:
+            Fn::ImportValue:
+              !Sub ${ParentStackName}VpcCidr
+      VpcId:
+        Fn::ImportValue:
+          !Sub ${ParentStackName}Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName} - Apache Server
+        - Key: Environment
+          Value: !Ref Environment
+  ApacheServerLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      BlockDeviceMappings:
+        - DeviceName: /dev/sdk
+          Ebs:
+            VolumeSize: 10
+      IamInstanceProfile: !Ref GeneralServerIAMProfile
+      ImageId: !Ref UbuntuAMI
+      InstanceType: t3.medium
+      # TODO: Uncomment the line below if access to the instances is required
+      # TODO: This action should be temporary and for Debug purposes only
+      # KeyName: !Ref KeyPairName
+      SecurityGroups:
+        - Ref: ApacheServerSecurityGroup
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          # Updates and installs dependencies
+          apt-get update
+          apt-get install unzip awscli apache2 -y
+          # Downloads and copies udagram content
+          cd /var/www/html
+          aws s3 cp s3://${TargetS3BucketName}-${AWS::AccountId}/udagram.zip .
+          unzip -o udagram.zip
+          rm -f udagram.zip
+          # Starts the server
+          systemctl start apache2
+  ApacheServerAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: !Sub ${ProjectName} - Apache Server
+      VPCZoneIdentifier:
+        - Fn::ImportValue:
+            !Sub ${ParentStackName}PrivateSubnets
+      MinSize: 1
+      MaxSize: 4
+      LaunchConfigurationName: !Ref ApacheServerLaunchConfiguration
+      TargetGroupARNs:
+        - !Ref WebLoadBalancerTargetGroup
+      HealthCheckGracePeriod: 60
+      HealthCheckType: ELB
+  WebLoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security rules designed for the Web Load Balancer
+      GroupName: WebLoadBalancerSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: !Ref AllCidr
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref AllCidr
+      VpcId:
+        Fn::ImportValue:
+          !Sub ${ParentStackName}Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName} - Web Load Balancer
+        - Key: Environment
+          Value: Environment
+  WebLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: WebLoadBalancer
+      SecurityGroups:
+        - Ref: WebLoadBalancerSecurityGroup
+      Subnets:
+        - Fn::ImportValue: !Sub ${ParentStackName}PublicSubnet1
+        - Fn::ImportValue: !Sub ${ParentStackName}PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName} - Web Load Balancer
+        - Key: Environment
+          Value: !Ref Environment
+  WebLoadBalancerTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 60
+      HealthCheckPath: /
+      HealthCheckPort: 80
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 15
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 5
+      Name: WebLoadBalancerTargetGroup
+      Port: 80
+      Protocol: HTTP
+      VpcId:
+        Fn::ImportValue: !Sub ${ParentStackName}Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName} - Web Load Balancer Target Group
+        - Key: Environment
+          Value: Environment
+  WebLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref WebLoadBalancerTargetGroup
+      LoadBalancerArn: !Ref WebLoadBalancer
+      Port: 80
+      Protocol: HTTP
+  WebLoadBalancerListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref WebLoadBalancerTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values: [/]
+      ListenerArn: !Ref WebLoadBalancerListener
+      Priority: 1
+  JumpBoxServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security rules designed for the JumBoxes servers
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: !Ref AllCidr
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SSHAccessIP
+      VpcId:
+        Fn::ImportValue:
+          !Sub ${ParentStackName}Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName} - JumpBox Server
+        - Key: Environment
+          Value: !Ref Environment
+  JumpBoxServerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile: !Ref GeneralServerIAMProfile
+      ImageId: !Ref UbuntuAMI
+      InstanceType: t2.micro
+      KeyName: !Sub ${KeyPairName}
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeleteOnTermination: true
+          DeviceIndex: 0
+          GroupSet:
+            - !GetAtt JumpBoxServerSecurityGroup.GroupId
+          SubnetId:
+            Fn::ImportValue:
+              !Sub ${ParentStackName}PublicSubnet1
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          # Updates and installs dependencies
+          apt-get update -y
+          apt-get install awscli -y
+          # Downloads PEM file
+          cd /home/ubuntu
+          aws s3 cp s3://${TargetS3BucketName}-${AWS::AccountId}/${KeyPairName}.pem .
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName} - JumpBox
+        - Key: Environment
+          Value: Environment
+Outputs:
+  WebLoadBalancerUrl:
+    Description: The URL for accessing the Web Load Balancer
+    Value: !Sub
+      - http://${DNS}
+      - { DNS: !GetAtt WebLoadBalancer.DNSName }
+    Export:
+      Name: !Sub ${AWS::StackName}LoadBalancerUrl
+  JumpBoxDns:
+    Description: The DNS address for accessing the JumBox server
+    Value: !GetAtt JumpBoxServerInstance.PublicDnsName
+    Export:
+      Name: !Sub ${AWS::StackName}JumpBoxPublicDns

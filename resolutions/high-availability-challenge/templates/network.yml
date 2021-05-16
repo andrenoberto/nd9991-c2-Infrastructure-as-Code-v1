@@ -202,7 +202,12 @@ Outputs:
     Description: The ID from the stack VPC
     Value: !Ref VPC
     Export:
-      Name: !Sub ${AWS::StackName}VPC
+      Name: !Sub ${AWS::StackName}Vpc
+  VpcCidr:
+    Description: The VPC CIDR block
+    Value: !GetAtt VPC.CidrBlock
+    Export:
+      Name: !Sub ${AWS::StackName}VpcCidr
   PublicSubnets:
     Description: A list containing all public subnets IDs
     Value:
