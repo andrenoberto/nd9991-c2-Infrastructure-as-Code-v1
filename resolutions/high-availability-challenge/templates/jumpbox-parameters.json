@@ -1,0 +1,38 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "udagramJumpBoxes"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "Test"
+  },
+  {
+    "ParameterKey": "NetworkStackName",
+    "ParameterValue": "udagram"
+  },
+  {
+    "ParameterKey": "ServerStackName",
+    "ParameterValue": "udagramServers"
+  },
+  {
+    "ParameterKey": "AllCidr",
+    "ParameterValue": "0.0.0.0/0"
+  },
+  {
+    "ParameterKey": "TargetS3BucketName",
+    "ParameterValue": "udagram"
+  },
+  {
+    "ParameterKey": "SSHAccessIP",
+    "ParameterValue": "89.101.167.249/32"
+  },
+  {
+    "ParameterKey": "UbuntuAMI",
+    "ParameterValue": "ami-03d5c68bab01f3496"
+  },
+  {
+    "ParameterKey": "KeyPairName",
+    "ParameterValue": "udagram"
+  }
+]

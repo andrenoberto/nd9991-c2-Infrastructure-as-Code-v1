@@ -36,3 +36,18 @@ You will want to wait until the servers have been cleared before destroying the 
 ```
 ./perform.sh delete network
 ```
+
+##### 4. Remote Access
+If you need to remote access the instances, you'll need to uncomment the SSH ingress port under `ApacheServerSecurityGroup` and the `KeyName` under `ApacheServerLaunchConfiguration`.
+
+Last but not least, you will need to provision the JumpBox server to proxy your access. You can do this by running the following command:
+
+```
+./perform.sh create jumpbox
+```
+
+When you're done, don't forget to destroy the jumpbox resources
+
+```
+./perform.sh delete jumpbox
+```

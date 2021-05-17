@@ -4,6 +4,7 @@ template=$2
 accountId=001536788864
 stackName=udagram
 serversStackName=udagramServers
+jumpBoxesStackName=udagramJumpBoxes
 # Create Actions
 if [ $action = 'create' ]
 then
@@ -21,6 +22,9 @@ then
   elif [ $template = 'servers' ]
   then
     aws cloudformation $action-stack --stack-name $serversStackName --region us-west-2 --template-body file://./templates/servers.yml --parameters file://./templates/servers-parameters.json --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
+  elif [ $template = 'jumpbox' ]
+  then
+    aws cloudformation $action-stack --stack-name $jumpBoxesStackName --region us-west-2 --template-body file://./templates/jumpbox.yml --parameters file://./templates/jumpbox-parameters.json
   fi
 fi
 # Delete Actions
@@ -36,5 +40,8 @@ then
   elif [ $template = 'servers' ]
   then
     aws cloudformation $action-stack --stack-name $serversStackName
+  elif [ $template = 'jumpbox' ]
+  then
+    aws cloudformation $action-stack --stack-name $jumpBoxesStackName
   fi
 fi

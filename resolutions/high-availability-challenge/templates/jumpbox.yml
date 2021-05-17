@@ -1,0 +1,91 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Basic JumpBox infrastructure for Udagram
+Parameters:
+  ProjectName:
+    Description: The project name
+    Type: String
+  Environment:
+    Description: The environment name
+    Type: String
+  NetworkStackName:
+    Description: The name of the network's stack this stack depends on
+    Type: String
+  ServerStackName:
+    Description: The name of the server's stack this stack depends on
+    Type: String
+  AllCidr:
+    Description: A CIDR block that includes all existing IPv4 addresses
+    Type: String
+  TargetS3BucketName:
+    Description: The S3 bucket name where we're fetching the latest build from. Please, note that account ID will be added to the final name
+    Type: String
+  SSHAccessIP:
+    Description: The IP address that will be whitelisted to SSH into public instances
+    Type: String
+  UbuntuAMI:
+    Description: The ID of the Ubuntu image that will be use to provision the servers
+    Type: String
+  KeyPairName:
+    Description: The name of the key pair that will be used to gain access to the provisioned virtual machines
+    Type: String
+Resources:
+  JumpBoxServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security rules designed for the JumBoxes servers
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: !Ref AllCidr
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SSHAccessIP
+      VpcId:
+        Fn::ImportValue:
+          !Sub ${NetworkStackName}Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName} - JumpBox Server
+        - Key: Environment
+          Value: !Ref Environment
+  JumpBoxServerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile:
+        Fn::ImportValue:
+          !Sub ${ServerStackName}GeneralServerIamProfile
+      ImageId: !Ref UbuntuAMI
+      InstanceType: t2.micro
+      KeyName: !Sub ${KeyPairName}
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeleteOnTermination: true
+          DeviceIndex: 0
+          GroupSet:
+            - !GetAtt JumpBoxServerSecurityGroup.GroupId
+          SubnetId:
+            Fn::ImportValue:
+              !Sub ${NetworkStackName}PublicSubnet1
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          # Updates and installs dependencies
+          apt-get update -y
+          apt-get install awscli -y
+          # Downloads PEM file
+          cd /home/ubuntu
+          aws s3 cp s3://${TargetS3BucketName}-${AWS::AccountId}/${KeyPairName}.pem .
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName} - JumpBox
+        - Key: Environment
+          Value: Environment
+Outputs:
+  JumpBoxDns:
+    Description: The DNS address for accessing the JumBox server
+    Value: !GetAtt JumpBoxServerInstance.PublicDnsName
+    Export:
+      Name: !Sub ${AWS::StackName}JumpBoxPublicDns

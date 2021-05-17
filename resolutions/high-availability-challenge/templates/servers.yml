@@ -80,12 +80,14 @@ Resources:
           CidrIp:
             Fn::ImportValue:
               !Sub ${ParentStackName}VpcCidr
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp:
-            Fn::ImportValue:
-              !Sub ${ParentStackName}VpcCidr
+        # TODO: Uncomment the next few lines if access to the instances is required
+        # TODO: This action should be temporary and for Debug purposes only
+        # - IpProtocol: tcp
+        #  FromPort: 22
+        #  ToPort: 22
+        #  CidrIp:
+        #    Fn::ImportValue:
+        #      !Sub ${ParentStackName}VpcCidr
       VpcId:
         Fn::ImportValue:
           !Sub ${ParentStackName}Vpc
@@ -213,58 +215,6 @@ Resources:
           Values: [/]
       ListenerArn: !Ref WebLoadBalancerListener
       Priority: 1
-  JumpBoxServerSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security rules designed for the JumBoxes servers
-      SecurityGroupEgress:
-        - IpProtocol: -1
-          FromPort: -1
-          ToPort: -1
-          CidrIp: !Ref AllCidr
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: !Ref SSHAccessIP
-      VpcId:
-        Fn::ImportValue:
-          !Sub ${ParentStackName}Vpc
-      Tags:
-        - Key: Name
-          Value: !Sub ${ProjectName} - JumpBox Server
-        - Key: Environment
-          Value: !Ref Environment
-  JumpBoxServerInstance:
-    Type: AWS::EC2::Instance
-    Properties:
-      IamInstanceProfile: !Ref GeneralServerIAMProfile
-      ImageId: !Ref UbuntuAMI
-      InstanceType: t2.micro
-      KeyName: !Sub ${KeyPairName}
-      NetworkInterfaces:
-        - AssociatePublicIpAddress: true
-          DeleteOnTermination: true
-          DeviceIndex: 0
-          GroupSet:
-            - !GetAtt JumpBoxServerSecurityGroup.GroupId
-          SubnetId:
-            Fn::ImportValue:
-              !Sub ${ParentStackName}PublicSubnet1
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          # Updates and installs dependencies
-          apt-get update -y
-          apt-get install awscli -y
-          # Downloads PEM file
-          cd /home/ubuntu
-          aws s3 cp s3://${TargetS3BucketName}-${AWS::AccountId}/${KeyPairName}.pem .
-      Tags:
-        - Key: Name
-          Value: !Sub ${ProjectName} - JumpBox
-        - Key: Environment
-          Value: Environment
 Outputs:
   WebLoadBalancerUrl:
     Description: The URL for accessing the Web Load Balancer
@@ -273,8 +223,8 @@ Outputs:
       - { DNS: !GetAtt WebLoadBalancer.DNSName }
     Export:
       Name: !Sub ${AWS::StackName}LoadBalancerUrl
-  JumpBoxDns:
-    Description: The DNS address for accessing the JumBox server
-    Value: !GetAtt JumpBoxServerInstance.PublicDnsName
+  GeneralServerIAMProfile:
+    Description: The general IAM profile to be attached to EC2 instances
+    Value: !Ref GeneralServerIAMProfile
     Export:
-      Name: !Sub ${AWS::StackName}JumpBoxPublicDns
+      Name: !Sub ${AWS::StackName}GeneralServerIamProfile
